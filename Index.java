@@ -1,62 +1,30 @@
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.hibernate.HibernateException;
-import org.hibernate.engine.spi.SharedSessionContractImplementor;
-import org.hibernate.usertype.UserType;
+import org.hibernate.boot.model.TypeContributions;
+import org.hibernate.dialect.PostgreSQL10Dialect;
+import org.hibernate.service.ServiceRegistry;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.orm.hibernate5.SpringPhysicalNamingStrategy;
 
-import java.io.Serializable;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Types;
+@Configuration
+public class HibernateConfiguration {
 
-public class JsonbUserType implements UserType {
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Override
-    public int[] sqlTypes() {
-        return new int[]{Types.JAVA_OBJECT};
+    @Bean
+    public HibernatePhysicalNamingStrategy physicalNamingStrategy() {
+        return new HibernatePhysicalNamingStrategy();
     }
 
-    @Override
-    public Class returnedClass() {
-        return JsonNode.class;
+    @Bean
+    public PostgreSQL10Dialect postgreSQL10Dialect() {
+        return new PostgreSQL10Dialect() {
+            @Override
+            public TypeContributions getTypeContributions() {
+                return super.getTypeContributions()
+                        .addType(JsonbUserType.JSONB_TYPE, JsonbUserType.SQL_TYPES);
+            }
+        };
     }
 
-    @Override
-    public Object nullSafeGet(
-            ResultSet resultSet,
-            String[] names,
-            SharedSessionContractImplementor session,
-            Object owner) throws HibernateException, SQLException {
-        String json = resultSet.getString(names[0]);
-        if (json == null) {
-            return null;
-        }
-        try {
-            return objectMapper.readTree(json);
-        } catch (Exception e) {
-            throw new HibernateException("Error converting JSONB column to JsonNode", e);
-        }
+    private static class HibernatePhysicalNamingStrategy extends SpringPhysicalNamingStrategy {
+        // You don't need to add anything here if you don't have any custom naming strategy.
     }
-
-    @Override
-    public void nullSafeSet(
-            PreparedStatement preparedStatement,
-            Object value,
-            int index,
-            SharedSessionContractImplementor session) throws HibernateException, SQLException {
-        if (value == null) {
-            preparedStatement.setNull(index, Types.OTHER);
-            return;
-        }
-        try {
-            preparedStatement.setObject(index, objectMapper.writeValueAsString(value), Types.OTHER);
-        } catch (Exception e) {
-            throw new HibernateException("Error converting JsonNode to JSONB column", e);
-        }
-    }
-
-    // Other methods (equals, hashCode, deepCopy, etc.) can be left as default or implemented as needed.
 }
