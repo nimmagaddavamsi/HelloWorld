@@ -47,4 +47,14 @@ public class OneDriveUploader {
 
         uploadToOneDrive(accessToken, driveId, folderId, fileName, data);
     }
+
+    public void saveFileToWindowsShare(byte[] data, String fileName, String sharePath) {
+        try {
+            Path filePath = Paths.get(sharePath, fileName);
+            Files.write(filePath, data);
+        } catch (IOException e) {
+            e.printStackTrace();
+            // Handle the exception
+        }
+    }
 }
