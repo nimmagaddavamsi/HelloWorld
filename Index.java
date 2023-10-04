@@ -1,126 +1,97 @@
-import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.Base64;
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.pdfbox</groupId>
+        <artifactId>pdfbox</artifactId>
+        <version>2.0.30</version> <!-- Latest version as of my knowledge cutoff -->
+    </dependency>
+</dependencies>
 
-public class OneDriveUploader {
 
-    public static void uploadToOneDrive(String accessToken, String driveId, String folderId, String fileName, byte[] data) {
-        try {
-            String endpoint = "https://graph.microsoft.com/v1.0/me/drives/" + driveId + "/items/" + folderId + ":/" + fileName + ":/content";
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.stereotype.Service;
+import javax.mail.MessagingException;
+import javax.mail.internet.MimeMessage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 
-            URL apiUrl = new URL(endpoint);
-            HttpURLConnection connection = (HttpURLConnection) apiUrl.openConnection();
+@Service
+public class EmailService {
 
-            // Set the necessary headers for authentication and content type
-            connection.setRequestProperty("Authorization", "Bearer " + accessToken);
-            connection.setRequestProperty("Content-Type", "application/octet-stream");
-            connection.setRequestMethod("PUT");
-            connection.setDoOutput(true);
+    @Autowired
+    private JavaMailSender javaMailSender;
 
-            OutputStream outputStream = connection.getOutputStream();
-            outputStream.write(data);
-            outputStream.flush();
+    public void sendEmailWithAttachment(String to, String subject, String body, byte[] pdfBytes) throws MessagingException {
+        MimeMessage message = javaMailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true);
 
-            int responseCode = connection.getResponseCode();
-            if (responseCode == HttpURLConnection.HTTP_CREATED) {
-                System.out.println("File uploaded successfully.");
-            } else {
-                System.out.println("Error uploading file. Response code: " + responseCode);
-            }
+        helper.setTo(to);
+        helper.setSubject(subject);
+        helper.setText(body);
 
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // Attach the PDF file
+        helper.addAttachment("attachment.pdf", new ByteArrayResource(pdfBytes));
+
+        javaMailSender.send(message);
     }
 
-    public static void main(String[] args) {
-        String username = "YOUR_USERNAME";  // OneDrive username
-        String password = "YOUR_PASSWORD";  // OneDrive password
-        String driveId = "YOUR_DRIVE_ID";  // The ID of the OneDrive drive
-        String folderId = "YOUR_FOLDER_ID";  // The ID of the target folder
-        String fileName = "sample.txt";
-        byte[] data = "Hello, OneDrive!".getBytes();
+    public byte[] generatePdf() throws IOException {
+        PDDocument document = new PDDocument();
+        PDPage page = new PDPage();
+        document.addPage(page);
 
-        String basicAuth = Base64.getEncoder().encodeToString((username + ":" + password).getBytes());
-        String accessToken = "Bearer " + basicAuth;
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        document.save(byteArrayOutputStream);
+        document.close();
 
-        uploadToOneDrive(accessToken, driveId, folderId, fileName, data);
-    }
-
-    public void saveFileToWindowsShare(byte[] data, String fileName, String sharePath) {
-        try {
-            Path filePath = Paths.get(sharePath, fileName);
-            Files.write(filePath, data);
-        } catch (IOException e) {
-            e.printStackTrace();
-            // Handle the exception
-        }
+        return byteArrayOutputStream.toByteArray();
     }
 }
 
-import java.util.*;
-import javax.mail.*;
-import javax.mail.internet.*;
-import javax.activation.*;
-import org.apache.commons.io.FileUtils;
 
-public class SendEmailWithAttachment {
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import javax.mail.MessagingException;
+import java.io.IOException;
 
-    public static void main(String[] args) {
-        final String username = "your_email@gmail.com"; // Your email address
-        final String password = "your_password"; // Your email password
-        String toAddress = "recipient@example.com"; // Recipient's email address
-        String subject = "Subject of the email";
-        String body = "Body of the email";
-        String attachmentPath = "path_to_your_pdf_file.pdf"; // Replace with the actual path of your PDF file
+@RestController
+public class EmailController {
 
-        Properties props = new Properties();
-        props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.host", "smtp.gmail.com");
-        props.put("mail.smtp.port", "587");
+    @Autowired
+    private EmailService emailService;
 
-        Session session = Session.getInstance(props, new javax.mail.Authenticator() {
-            protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(username, password);
-            }
-        });
-
+    @GetMapping("/sendEmail")
+    public String sendEmail() {
         try {
-            Message message = new MimeMessage(session);
-            message.setFrom(new InternetAddress(username));
-            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toAddress));
-            message.setSubject(subject);
+            String to = "recipient@example.com";
+            String subject = "Subject of the email";
+            String body = "Body of the email";
 
-            // Create the message part
-            BodyPart messageBodyPart = new MimeBodyPart();
-            messageBodyPart.setText(body);
+            byte[] pdfBytes = emailService.generatePdf();
 
-            // Create the attachment part
-            MimeBodyPart attachmentPart = new MimeBodyPart();
-            DataSource source = new FileDataSource(attachmentPath);
-            attachmentPart.setDataHandler(new DataHandler(source));
-            attachmentPart.setFileName("attachment.pdf");
+            emailService.sendEmailWithAttachment(to, subject, body, pdfBytes);
 
-            // Multipart message
-            Multipart multipart = new MimeMultipart();
-            multipart.addBodyPart(messageBodyPart);
-            multipart.addBodyPart(attachmentPart);
-
-            // Set the content
-            message.setContent(multipart);
-
-            // Send the message
-            Transport.send(message);
-
-            System.out.println("Email sent successfully.");
-
-        } catch (MessagingException e) {
+            return "Email sent successfully.";
+        } catch (MessagingException | IOException e) {
             e.printStackTrace();
+            return "Error sending email.";
         }
     }
 }
 
 
-
+spring.mail.host=your_smtp_host
+spring.mail.port=your_smtp_port
+spring.mail.username=your_email@example.com
+spring.mail.password=your_email_password
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
