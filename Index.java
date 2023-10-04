@@ -58,3 +58,69 @@ public class OneDriveUploader {
         }
     }
 }
+
+import java.util.*;
+import javax.mail.*;
+import javax.mail.internet.*;
+import javax.activation.*;
+import org.apache.commons.io.FileUtils;
+
+public class SendEmailWithAttachment {
+
+    public static void main(String[] args) {
+        final String username = "your_email@gmail.com"; // Your email address
+        final String password = "your_password"; // Your email password
+        String toAddress = "recipient@example.com"; // Recipient's email address
+        String subject = "Subject of the email";
+        String body = "Body of the email";
+        String attachmentPath = "path_to_your_pdf_file.pdf"; // Replace with the actual path of your PDF file
+
+        Properties props = new Properties();
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.host", "smtp.gmail.com");
+        props.put("mail.smtp.port", "587");
+
+        Session session = Session.getInstance(props, new javax.mail.Authenticator() {
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(username, password);
+            }
+        });
+
+        try {
+            Message message = new MimeMessage(session);
+            message.setFrom(new InternetAddress(username));
+            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toAddress));
+            message.setSubject(subject);
+
+            // Create the message part
+            BodyPart messageBodyPart = new MimeBodyPart();
+            messageBodyPart.setText(body);
+
+            // Create the attachment part
+            MimeBodyPart attachmentPart = new MimeBodyPart();
+            DataSource source = new FileDataSource(attachmentPath);
+            attachmentPart.setDataHandler(new DataHandler(source));
+            attachmentPart.setFileName("attachment.pdf");
+
+            // Multipart message
+            Multipart multipart = new MimeMultipart();
+            multipart.addBodyPart(messageBodyPart);
+            multipart.addBodyPart(attachmentPart);
+
+            // Set the content
+            message.setContent(multipart);
+
+            // Send the message
+            Transport.send(message);
+
+            System.out.println("Email sent successfully.");
+
+        } catch (MessagingException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+
+
