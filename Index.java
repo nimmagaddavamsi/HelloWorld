@@ -66,3 +66,31 @@ public class YourController {
 
 -----------
 
+
+    import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import springfox.documentation.swagger.web.InMemorySwaggerResourcesProvider;
+import springfox.documentation.swagger.web.SwaggerResource;
+import springfox.documentation.swagger.web.SwaggerResourcesProvider;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Configuration
+public class SwaggerConfig {
+
+    @Value("${custom.server.url}")
+    private String customServerUrl;
+
+    @Bean
+    public SwaggerResourcesProvider swaggerResourcesProvider(InMemorySwaggerResourcesProvider defaultResourcesProvider) {
+        return () -> {
+            List<SwaggerResource> resources = new ArrayList<>(defaultResourcesProvider.get());
+            resources.forEach(resource -> resource.setUrl(customServerUrl + resource.getUrl()));
+            return resources;
+        };
+    }
+}
+
+
