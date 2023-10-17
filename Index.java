@@ -64,33 +64,32 @@ public class YourController {
     }
 }
 
------------
+implementation group: 'com.azure', name: 'azure-messaging-servicebus', version: '7.2.0' // Check for the latest version
 
 
-    import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import springfox.documentation.swagger.web.InMemorySwaggerResourcesProvider;
-import springfox.documentation.swagger.web.SwaggerResource;
-import springfox.documentation.swagger.web.SwaggerResourcesProvider;
+import com.azure.messaging.servicebus.*;
 
-import java.util.ArrayList;
-import java.util.List;
+public class ServiceBusSubscriber {
+    public static void main(String[] args) {
+        // Define your Service Bus connection string and queue/topic name
+        String connectionString = "<your_connection_string>";
+        String queueName = "<your_queue_name>"; // Or topic name if you're working with a topic
 
-@Configuration
-public class SwaggerConfig {
+        // Initialize a ServiceBusClient
+        ServiceBusClientBuilder builder = new ServiceBusClientBuilder()
+                .connectionString(connectionString);
 
-    @Value("${custom.server.url}")
-    private String customServerUrl;
+        ServiceBusReceiverClient receiverClient = builder.receiver()
+                .queueName(queueName)
+                .buildReceiverClient();
 
-    @Bean
-    public SwaggerResourcesProvider swaggerResourcesProvider(InMemorySwaggerResourcesProvider defaultResourcesProvider) {
-        return () -> {
-            List<SwaggerResource> resources = new ArrayList<>(defaultResourcesProvider.get());
-            resources.forEach(resource -> resource.setUrl(customServerUrl + resource.getUrl()));
-            return resources;
-        };
+        // Start receiving messages
+        while (true) {
+            Iterable<ServiceBusReceivedMessage> receivedMessages = receiverClient.receiveMessages(1);
+
+            for (ServiceBusReceivedMessage receivedMessage : receivedMessages) {
+                System.out.println("Received message: " + receivedMessage.getBody().toString());
+            }
+        }
     }
 }
-
-
