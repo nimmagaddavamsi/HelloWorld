@@ -105,3 +105,18 @@ body.append("<html><body><h1>List of Data</h1>");
 
         message.setText(body.toString());
         message.setHtml(true);
+
+
+public static boolean isValidDateFormat(String date) {
+        String regex = "^(0[1-9]|1[0-2])/(0[1-9]|[12]\\d|3[01])/(19|20)\\d{2}$";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(date);
+        return matcher.matches();
+    }
+
+ public static boolean isValidDateTimeFormat(String dateTime) {
+        String regex = "^(0[1-9]|1[0-2])/(0[1-9]|[12]\\d|3[01])/(19|20)\\d{2} (0\\d|1\\d|2[0-3]):([0-5]\\d):([0-5]\\d)$";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(dateTime);
+        return matcher.matches();
+    }
