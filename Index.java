@@ -93,3 +93,15 @@ public class ServiceBusSubscriber {
         }
     }
 }
+
+
+body.append("<html><body><h1>List of Data</h1>");
+        body.append("<table border='1'>");
+        body.append("<tr><th>Data</th></tr>");
+        for (String data : dataList) {
+            body.append("<tr><td>").append(data).append("</td></tr>");
+        }
+        body.append("</table></body></html>");
+
+        message.setText(body.toString());
+        message.setHtml(true);
