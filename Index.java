@@ -1,70 +1,59 @@
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-integration'
     implementation 'org.springframework.integration:spring-integration-sftp'
+    implementation 'com.jcraft:jsch:0.1.55'
     // Add other dependencies if needed
 }
----------------------
+---------
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.integration.file.remote.session.SessionFactory;
+import org.springframework.integration.sftp.session.SftpRemoteFileTemplate;
 
+public class SftpUploader {
+
+    @Autowired
+    private SftpRemoteFileTemplate sftpTemplate;
+
+    public void uploadByteArray(byte[] data, String remoteFileName) {
+        sftpTemplate.execute(session -> {
+            try {
+                session.write(new ByteArrayInputStream(data), remoteFileName);
+            } catch (IOException e) {
+                throw new RuntimeException("Error uploading file to SFTP server", e);
+            }
+            return null;
+        });
+    }
+}
+
+---------
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.integration.dsl.IntegrationFlows;
-import org.springframework.integration.dsl.context.IntegrationFlowContext;
-import org.springframework.integration.file.FileHeaders;
-import org.springframework.integration.file.FileWritingMessageHandler;
+import org.springframework.integration.file.remote.session.CachingSessionFactory;
+import org.springframework.integration.file.remote.session.SessionFactory;
 import org.springframework.integration.sftp.session.DefaultSftpSessionFactory;
-import org.springframework.messaging.MessageHandler;
+import org.springframework.integration.sftp.session.SftpRemoteFileTemplate;
 
 @Configuration
 public class SftpConfig {
 
     @Bean
-    public DefaultSftpSessionFactory sftpSessionFactory() {
+    public SessionFactory<ChannelSftp.LsEntry> sftpSessionFactory() {
         DefaultSftpSessionFactory factory = new DefaultSftpSessionFactory(true);
         factory.setHost("your.sftp.host");
         factory.setPort(22);
         factory.setUser("your_username");
         factory.setPassword("your_password");
         factory.setAllowUnknownKeys(true);
-        return factory;
+        return new CachingSessionFactory<>(factory);
     }
 
     @Bean
-    public MessageHandler sftpMessageHandler(DefaultSftpSessionFactory sftpSessionFactory) {
-        FileWritingMessageHandler handler = new FileWritingMessageHandler(sftpSessionFactory);
-        handler.setRemoteDirectoryExpressionString("/remote/directory/");
-        handler.setFileNameGenerator(message -> message.getHeaders().get(FileHeaders.FILENAME).toString());
-        return handler;
-    }
-
-    @Bean
-    public IntegrationFlow sftpUploadFlow(MessageHandler sftpMessageHandler) {
-        return IntegrationFlows.from(MessageChannels.direct())
-                .handle(sftpMessageHandler)
-                .get();
+    public SftpRemoteFileTemplate sftpTemplate(SessionFactory<ChannelSftp.LsEntry> sftpSessionFactory) {
+        return new SftpRemoteFileTemplate(sftpSessionFactory);
     }
 }
-----------------------------
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.messaging.Message;
-import org.springframework.messaging.MessageHeaders;
-import org.springframework.messaging.support.MessageBuilder;
-
-public class SftpUploader {
-
-    @Autowired
-    private MessageHandler sftpMessageHandler;
-
-    public void uploadByteArray(byte[] data, String remoteFileName) {
-        Message<byte[]> message = MessageBuilder
-                .withPayload(data)
-                .setHeader(FileHeaders.FILENAME, remoteFileName)
-                .build();
-        sftpMessageHandler.handleMessage(message);
-    }
-}
-
---------------------------------
+---------
 
 public class MainApplication {
 
