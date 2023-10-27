@@ -1,122 +1,79 @@
-import com.azure.messaging.servicebus.ServiceBusClientBuilder;
-import com.azure.messaging.servicebus.ServiceBusSenderClient;
-import com.azure.messaging.servicebus.ServiceBusMessage;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-integration'
+    implementation 'org.springframework.integration:spring-integration-sftp'
+    // Add other dependencies if needed
+}
+---------------------
 
-@Component
-public class ServiceBusMessageSender {
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.integration.dsl.IntegrationFlows;
+import org.springframework.integration.dsl.context.IntegrationFlowContext;
+import org.springframework.integration.file.FileHeaders;
+import org.springframework.integration.file.FileWritingMessageHandler;
+import org.springframework.integration.sftp.session.DefaultSftpSessionFactory;
+import org.springframework.messaging.MessageHandler;
 
-    private final ServiceBusSenderClient senderClient;
+@Configuration
+public class SftpConfig {
 
-    public ServiceBusMessageSender(@Value("${azure.servicebus.connection-string}") String connectionString,
-                                   @Value("${azure.servicebus.queue-name}") String queueName) {
-        this.senderClient = new ServiceBusClientBuilder()
-                .connectionString(connectionString)
-                .sender()
-                .queueName(queueName)
-                .buildSenderClient();
+    @Bean
+    public DefaultSftpSessionFactory sftpSessionFactory() {
+        DefaultSftpSessionFactory factory = new DefaultSftpSessionFactory(true);
+        factory.setHost("your.sftp.host");
+        factory.setPort(22);
+        factory.setUser("your_username");
+        factory.setPassword("your_password");
+        factory.setAllowUnknownKeys(true);
+        return factory;
     }
 
-    public void sendMessage(String message) {
-        ServiceBusMessage serviceBusMessage = new ServiceBusMessage(message);
-        senderClient.sendMessage(serviceBusMessage);
+    @Bean
+    public MessageHandler sftpMessageHandler(DefaultSftpSessionFactory sftpSessionFactory) {
+        FileWritingMessageHandler handler = new FileWritingMessageHandler(sftpSessionFactory);
+        handler.setRemoteDirectoryExpressionString("/remote/directory/");
+        handler.setFileNameGenerator(message -> message.getHeaders().get(FileHeaders.FILENAME).toString());
+        return handler;
+    }
+
+    @Bean
+    public IntegrationFlow sftpUploadFlow(MessageHandler sftpMessageHandler) {
+        return IntegrationFlows.from(MessageChannels.direct())
+                .handle(sftpMessageHandler)
+                .get();
+    }
+}
+----------------------------
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageHeaders;
+import org.springframework.messaging.support.MessageBuilder;
+
+public class SftpUploader {
+
+    @Autowired
+    private MessageHandler sftpMessageHandler;
+
+    public void uploadByteArray(byte[] data, String remoteFileName) {
+        Message<byte[]> message = MessageBuilder
+                .withPayload(data)
+                .setHeader(FileHeaders.FILENAME, remoteFileName)
+                .build();
+        sftpMessageHandler.handleMessage(message);
     }
 }
 
----------------
+--------------------------------
 
+public class MainApplication {
 
-import org.springframework.stereotype.Service;
+    @Autowired
+    private SftpUploader sftpUploader;
 
-@Service
-public class YourService {
-
-    private final ServiceBusMessageSender messageSender;
-
-    public YourService(ServiceBusMessageSender messageSender) {
-        this.messageSender = messageSender;
-    }
-
-    public void sendToServiceBus(String message) {
-        messageSender.sendMessage(message);
+    public void uploadData() {
+        byte[] data = "Hello, SFTP!".getBytes();
+        String remoteFileName = "test.txt";
+        sftpUploader.uploadByteArray(data, remoteFileName);
     }
 }
-
-----------------
-
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
-
-@RestController
-public class YourController {
-
-    private final YourService yourService;
-
-    public YourController(YourService yourService) {
-        this.yourService = yourService;
-    }
-
-    @PostMapping("/send-message")
-    public void sendMessage(@RequestBody String message) {
-        yourService.sendToServiceBus(message);
-    }
-}
-
-implementation group: 'com.azure', name: 'azure-messaging-servicebus', version: '7.2.0' // Check for the latest version
-
-
-import com.azure.messaging.servicebus.*;
-
-public class ServiceBusSubscriber {
-    public static void main(String[] args) {
-        // Define your Service Bus connection string and queue/topic name
-        String connectionString = "<your_connection_string>";
-        String queueName = "<your_queue_name>"; // Or topic name if you're working with a topic
-
-        // Initialize a ServiceBusClient
-        ServiceBusClientBuilder builder = new ServiceBusClientBuilder()
-                .connectionString(connectionString);
-
-        ServiceBusReceiverClient receiverClient = builder.receiver()
-                .queueName(queueName)
-                .buildReceiverClient();
-
-        // Start receiving messages
-        while (true) {
-            Iterable<ServiceBusReceivedMessage> receivedMessages = receiverClient.receiveMessages(1);
-
-            for (ServiceBusReceivedMessage receivedMessage : receivedMessages) {
-                System.out.println("Received message: " + receivedMessage.getBody().toString());
-            }
-        }
-    }
-}
-
-
-body.append("<html><body><h1>List of Data</h1>");
-        body.append("<table border='1'>");
-        body.append("<tr><th>Data</th></tr>");
-        for (String data : dataList) {
-            body.append("<tr><td>").append(data).append("</td></tr>");
-        }
-        body.append("</table></body></html>");
-
-        message.setText(body.toString());
-        message.setHtml(true);
-
-
-public static boolean isValidDateFormat(String date) {
-        String regex = "^(0[1-9]|1[0-2])/(0[1-9]|[12]\\d|3[01])/(19|20)\\d{2}$";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(date);
-        return matcher.matches();
-    }
-
- public static boolean isValidDateTimeFormat(String dateTime) {
-        String regex = "^(0[1-9]|1[0-2])/(0[1-9]|[12]\\d|3[01])/(19|20)\\d{2} (0\\d|1\\d|2[0-3]):([0-5]\\d):([0-5]\\d)$";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(dateTime);
-        return matcher.matches();
-    }
