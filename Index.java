@@ -233,3 +233,52 @@ public class HTTPRequestBuilder {
 }
 
     
+------------
+
+    import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestTemplate;
+
+public class PostRequestWithRestTemplate {
+
+    public static void main(String[] args) {
+        String apiUrl = "https://example.com/api/resource";
+        String requestBody = "{\"key\": \"value\"}"; // Your request body
+        String headersFilePath = "api_headers.json";
+
+        try {
+            String response = sendPostRequest(apiUrl, requestBody, headersFilePath);
+            System.out.println("Response: " + response);
+
+            // Handle response...
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static String sendPostRequest(String apiUrl, String requestBody, String headersFilePath) throws Exception {
+        RestTemplate restTemplate = new RestTemplate();
+
+        // Prepare headers
+        HttpHeaders headers = new HttpHeaders();
+        JSONObject headersJson = readHeadersFromFile(headersFilePath);
+        for (Object key : headersJson.keySet()) {
+            String keyStr = (String) key;
+            String value = (String) headersJson.get(keyStr);
+            headers.set(keyStr, value);
+        }
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        // Prepare request entity
+        HttpEntity<String> requestEntity = new HttpEntity<>(requestBody, headers);
+
+        // Send POST request
+        ResponseEntity<String> responseEntity = restTemplate.postForEntity(apiUrl, requestEntity, String.class);
+
+        // Get response body
+        return responseEntity.getBody();
+    }
+}
