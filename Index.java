@@ -120,5 +120,56 @@ public class APIHeaderReader {
         }
     }
 }
+--------------
+
+    import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+
+public class APIHeaderUpdater {
+
+    public static void main(String[] args) {
+        String filePath = "api_headers.json";
+
+        try {
+            JSONObject headers = readHeadersFromFile(filePath);
+            System.out.println("Current Headers: " + headers);
+
+            // Update headers
+            headers.put("Authorization", "Bearer new_api_token_here");
+            headers.put("Custom-Header", "custom_value");
+
+            // Write updated headers back to file
+            writeHeadersToFile(headers, filePath);
+
+            System.out.println("Updated Headers: " + headers);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static JSONObject readHeadersFromFile(String filePath) throws IOException, ParseException {
+        JSONParser parser = new JSONParser();
+
+        try (FileReader reader = new FileReader(filePath)) {
+            Object obj = parser.parse(reader);
+            JSONObject jsonObject = (JSONObject) obj;
+            return (JSONObject) jsonObject.get("headers");
+        }
+    }
+
+    public static void writeHeadersToFile(JSONObject headers, String filePath) throws IOException {
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("headers", headers);
+
+        try (FileWriter fileWriter = new FileWriter(filePath)) {
+            fileWriter.write(jsonObject.toJSONString());
+        }
+    }
+}
 
     
