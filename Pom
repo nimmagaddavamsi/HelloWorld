@@ -3,3 +3,30 @@
     <artifactId>json-simple</artifactId>
     <version>1.1.1</version>
 </dependency>
+
+------
+import org.springframework.util.ResourceUtils;
+
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+public class Main {
+
+    public static void main(String[] args) {
+        String headersFilePath = "api_headers.json";
+
+        try {
+            File file = ResourceUtils.getFile("classpath:" + headersFilePath);
+            String content = new String(Files.readAllBytes(Paths.get(file.getAbsolutePath())));
+
+            System.out.println("File content:");
+            System.out.println(content);
+
+            // Now you can parse the JSON content or use it as needed
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
