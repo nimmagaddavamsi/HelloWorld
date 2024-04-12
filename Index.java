@@ -171,5 +171,65 @@ public class APIHeaderUpdater {
         }
     }
 }
+-----------------
+
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+
+import java.io.FileReader;
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+public class HTTPRequestBuilder {
+
+    public static void main(String[] args) {
+        String apiUrl = "https://example.com/api/resource";
+        String headersFilePath = "api_headers.json";
+
+        try {
+            JSONObject headers = readHeadersFromFile(headersFilePath);
+
+            // Build HTTP request with headers
+            HttpURLConnection connection = buildRequest(apiUrl, headers);
+            // Execute request
+            int responseCode = connection.getResponseCode();
+            System.out.println("Response Code: " + responseCode);
+
+            // Handle response...
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static JSONObject readHeadersFromFile(String filePath) throws IOException, ParseException {
+        JSONParser parser = new JSONParser();
+
+        try (FileReader reader = new FileReader(filePath)) {
+            Object obj = parser.parse(reader);
+            JSONObject jsonObject = (JSONObject) obj;
+            return (JSONObject) jsonObject.get("headers");
+        }
+    }
+
+    public static HttpURLConnection buildRequest(String apiUrl, JSONObject headers) throws IOException {
+        URL url = new URL(apiUrl);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+
+        // Set request method
+        connection.setRequestMethod("GET");
+
+        // Set headers
+        for (Object key : headers.keySet()) {
+            String keyStr = (String) key;
+            String value = (String) headers.get(keyStr);
+            connection.setRequestProperty(keyStr, value);
+        }
+
+        return connection;
+    }
+}
 
     
