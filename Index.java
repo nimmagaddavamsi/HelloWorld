@@ -86,3 +86,39 @@ public class JsonHandler {
         }
     }
 }
+-----------
+
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+
+import java.io.FileReader;
+import java.io.IOException;
+
+public class APIHeaderReader {
+
+    public static void main(String[] args) {
+        String filePath = "api_headers.json";
+
+        try {
+            JSONObject headers = readHeadersFromFile(filePath);
+            System.out.println("Headers read from file: " + headers);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static JSONObject readHeadersFromFile(String filePath) throws Exception {
+        JSONParser parser = new JSONParser();
+
+        try (FileReader reader = new FileReader(filePath)) {
+            Object obj = parser.parse(reader);
+            JSONObject jsonObject = (JSONObject) obj;
+            return (JSONObject) jsonObject.get("headers");
+        } catch (IOException e) {
+            e.printStackTrace();
+            throw new Exception("Error reading headers from file: " + e.getMessage());
+        }
+    }
+}
+
+    
