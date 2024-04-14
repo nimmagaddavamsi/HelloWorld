@@ -1,32 +1,32 @@
-<dependency>
-    <groupId>com.googlecode.json-simple</groupId>
-    <artifactId>json-simple</artifactId>
-    <version>1.1.1</version>
-</dependency>
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestTemplate;
 
-------
-import org.springframework.util.ResourceUtils;
+import java.io.FileOutputStream;
+import java.io.IOException;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-
-public class Main {
+public class FileDownloader {
 
     public static void main(String[] args) {
-        String headersFilePath = "api_headers.json";
+        String apiUrl = "https://example.com/api/download/file";
+        String filePath = "downloaded_file.txt"; // Specify the file path to save the downloaded file
 
         try {
-            File file = ResourceUtils.getFile("classpath:" + headersFilePath);
-            String content = new String(Files.readAllBytes(Paths.get(file.getAbsolutePath())));
-
-            System.out.println("File content:");
-            System.out.println(content);
-
-            // Now you can parse the JSON content or use it as needed
-
-        } catch (Exception e) {
+            downloadFile(apiUrl, filePath);
+            System.out.println("File downloaded successfully!");
+        } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    public static void downloadFile(String apiUrl, String filePath) throws IOException {
+        RestTemplate restTemplate = new RestTemplate();
+        
+        // Make GET request to download the file
+        ResponseEntity<byte[]> response = restTemplate.getForEntity(apiUrl, byte[].class);
+
+        // Write the downloaded file content to disk
+        try (FileOutputStream fos = new FileOutputStream(filePath)) {
+            fos.write(response.getBody());
         }
     }
 }
