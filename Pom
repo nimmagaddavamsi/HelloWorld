@@ -1,44 +1,38 @@
+import org.json.JSONException;
 import org.json.JSONObject;
 
-public class DynamicObjectBuilder {
+public class JsonObjectComparator {
 
-    public static void main(String[] args) {
-        // Sample JSON string with key-value pairs
-        String jsonString = "{\"name\": \"John\", \"age\": 30, \"city\": \"New York\"}";
+    public static void main(String[] args) throws JSONException {
+        JSONObject json1 = new JSONObject("{\"name\":\"John\",\"age\":30,\"city\":\"New York\"}");
+        JSONObject json2 = new JSONObject("{\"age\":35,\"city\":\"Los Angeles\",\"country\":\"USA\"}");
 
-        // Parse the JSON string into a JSONObject
-        JSONObject jsonObject = new JSONObject(jsonString);
+        JSONObject mergedJson = mergeJsonObjects(json1, json2);
 
-        // Build a dynamic object from the JSON data
-        DynamicObject dynamicObject = buildDynamicObject(jsonObject);
-
-        // Print the dynamic object
-        System.out.println(dynamicObject);
+        System.out.println("Merged JSON:");
+        System.out.println(mergedJson.toString(4));
     }
 
-    private static DynamicObject buildDynamicObject(JSONObject jsonObject) {
-        DynamicObject dynamicObject = new DynamicObject();
-        for (String key : jsonObject.keySet()) {
-            dynamicObject.addProperty(key, jsonObject.get(key));
+    private static JSONObject mergeJsonObjects(JSONObject obj1, JSONObject obj2) throws JSONException {
+        JSONObject mergedJson = new JSONObject();
+
+        // Merge keys from obj1
+        for (String key : obj1.keySet()) {
+            mergedJson.put(key, obj1.get(key));
         }
-        return dynamicObject;
-    }
-}
 
-class DynamicObject {
-    // You can use a Map or any other data structure to hold key-value pairs
-    private final JSONObject properties;
+        // Merge keys from obj2, overwrite existing values if necessary
+        for (String key : obj2.keySet()) {
+            if (mergedJson.has(key)) {
+                // Handle conflict: overwrite value from obj1 with value from obj2
+                // You can customize this logic based on your requirements
+                mergedJson.put(key, obj2.get(key));
+            } else {
+                // Key does not exist in obj1, add it to mergedJson
+                mergedJson.put(key, obj2.get(key));
+            }
+        }
 
-    public DynamicObject() {
-        properties = new JSONObject();
-    }
-
-    public void addProperty(String key, Object value) {
-        properties.put(key, value);
-    }
-
-    @Override
-    public String toString() {
-        return properties.toString();
+        return mergedJson;
     }
 }
