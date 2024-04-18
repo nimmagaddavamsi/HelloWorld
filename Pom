@@ -1,37 +1,44 @@
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import org.json.JSONObject;
 
-public class ResourceFolderAndFileCreator {
+public class DynamicObjectBuilder {
 
     public static void main(String[] args) {
-        createFolderAndFile("new_folder", "new_file.txt");
+        // Sample JSON string with key-value pairs
+        String jsonString = "{\"name\": \"John\", \"age\": 30, \"city\": \"New York\"}";
+
+        // Parse the JSON string into a JSONObject
+        JSONObject jsonObject = new JSONObject(jsonString);
+
+        // Build a dynamic object from the JSON data
+        DynamicObject dynamicObject = buildDynamicObject(jsonObject);
+
+        // Print the dynamic object
+        System.out.println(dynamicObject);
     }
 
-    public static void createFolderAndFile(String folderName, String fileName) {
-        // Path to the src/main/resources directory
-        String resourcesPath = "src/main/resources/";
-
-        // Create a new folder
-        File folder = new File(resourcesPath + folderName);
-        if (!folder.exists()) {
-            folder.mkdirs(); // Make directories recursively
-            System.out.println("Folder created: " + folder.getAbsolutePath());
-        } else {
-            System.out.println("Folder already exists: " + folder.getAbsolutePath());
+    private static DynamicObject buildDynamicObject(JSONObject jsonObject) {
+        DynamicObject dynamicObject = new DynamicObject();
+        for (String key : jsonObject.keySet()) {
+            dynamicObject.addProperty(key, jsonObject.get(key));
         }
+        return dynamicObject;
+    }
+}
 
-        // Create a new file within the folder
-        File file = new File(folder, fileName);
-        try {
-            if (file.createNewFile()) {
-                System.out.println("File created: " + file.getAbsolutePath());
-                // You can write content to the file here if needed
-            } else {
-                System.out.println("File already exists: " + file.getAbsolutePath());
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+class DynamicObject {
+    // You can use a Map or any other data structure to hold key-value pairs
+    private final JSONObject properties;
+
+    public DynamicObject() {
+        properties = new JSONObject();
+    }
+
+    public void addProperty(String key, Object value) {
+        properties.put(key, value);
+    }
+
+    @Override
+    public String toString() {
+        return properties.toString();
     }
 }
