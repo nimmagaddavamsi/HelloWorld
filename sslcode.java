@@ -1,23 +1,38 @@
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.ssl.SSLContextBuilder;
-import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
-import org.springframework.web.client.RestTemplate;
+private static String generateInsertQuery(String keyspace, String table, Row row) {
+    StringBuilder columns = new StringBuilder();
+    StringBuilder values = new StringBuilder();
 
-import javax.net.ssl.SSLContext;
+    row.getColumnDefinitions().forEach(columnDef -> {
+        String columnName = columnDef.getName().asInternal();
+        Object columnValue = row.getObject(columnName);
 
-public class CustomRestTemplate {
+        if (columns.length() > 0) {
+            columns.append(", ");
+            values.append(", ");
+        }
 
-    public RestTemplate getRestTemplate() throws Exception {
-        SSLContext sslContext = SSLContextBuilder.create()
-            .setProtocol("TLSv1.2")  // Specify the TLS version here
-            .build();
+        columns.append(columnName);
+        values.append("'" + columnValue + "'");
+    });
 
-        CloseableHttpClient httpClient = HttpClients.custom()
-            .setSSLContext(sslContext)
-            .build();
+    return String.format("INSERT INTO %s.%s (%s) VALUES (%s)", keyspace, table, columns, values);
+}
 
-        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        return new RestTemplate(factory);
-    }
+private static String generateUpdateQuery(String keyspace, String table, Row row, String primaryKeyColumn) {
+    StringBuilder setClause = new StringBuilder();
+    Object primaryKeyValue = row.getObject(primaryKeyColumn);
+
+    row.getColumnDefinitions().forEach(columnDef -> {
+        String columnName = columnDef.getName().asInternal();
+        Object columnValue = row.getObject(columnName);
+
+        if (!columnName.equals(primaryKeyColumn)) {
+            if (setClause.length() > 0) {
+                setClause.append(", ");
+            }
+            setClause.append(columnName + " = '" + columnValue + "'");
+        }
+    });
+
+    return String.format("UPDATE %s.%s SET %s WHERE %s = '%s'", keyspace, table, setClause, primaryKeyColumn, primaryKeyValue);
 }
