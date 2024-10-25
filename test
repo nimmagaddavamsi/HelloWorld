@@ -29,3 +29,17 @@ private static String bytesToHex(byte[] bytes) {
     }
     return hexString.toString();
 }
+
+
+
+if (column.getType().asCql(true).equals("blob")) {
+            // Handle BLOB: Convert ByteBuffer to hex string
+            ByteBuffer blobValue = row.getByteBuffer(columnName);
+            if (blobValue != null) {
+                values.append("0x").append(bytesToHex(blobValue.array())).append(", ");
+            } else {
+                values.append("null, ");
+            }
+        } else {
+            values.append("'").append(row.getObject(columnName)).append("', ");
+        }
