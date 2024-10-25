@@ -1,0 +1,175 @@
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.*;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import java.io.FileInputStream;
+import java.nio.ByteBuffer;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class CassandraDataTransfer {
+
+    private static final String PROD_KEYSPACE = "prod_keyspace";
+    private static final String PROD_TABLE = "prod_table";
+    private static final String NON_PROD_KEYSPACE = "non_prod_keyspace";
+    private static final String NON_PROD_TABLE = "non_prod_table";
+    private static final String EXCEL_FILE_PATH = "path/to/excel/file.xlsx";
+    private static final int BATCH_SIZE = 100;
+
+    public static void main(String[] args) {
+        try (CqlSession prodSession = connectToCassandra("prod_host", "username", "password");
+             CqlSession nonProdSession = connectToCassandra("non_prod_host", "username", "password")) {
+
+            List<String> primaryKeys = readPrimaryKeysFromExcel(EXCEL_FILE_PATH);
+
+            // Process primary keys in batches of 100
+            for (int i = 0; i < primaryKeys.size(); i += BATCH_SIZE) {
+                List<String> batchKeys = primaryKeys.subList(i, Math.min(i + BATCH_SIZE, primaryKeys.size()));
+                List<Map<String, Object>> rowsData = fetchRowsFromProdInBatches(prodSession, batchKeys);
+
+                for (Map<String, Object> rowData : rowsData) {
+                    String primaryKey = (String) rowData.get("primary_key_column");
+                    if (recordExists(nonProdSession, primaryKey)) {
+                        updateRecord(nonProdSession, rowData);
+                    } else {
+                        insertRecord(nonProdSession, rowData);
+                    }
+                }
+            }
+        }
+    }
+
+    private static CqlSession connectToCassandra(String host, String username, String password) {
+        return CqlSession.builder()
+                .addContactPoint(new InetSocketAddress(host, 9042))
+                .withAuthCredentials(username, password)
+                .build();
+    }
+
+    private static List<String> readPrimaryKeysFromExcel(String filePath) {
+        List<String> primaryKeys = new ArrayList<>();
+        try (FileInputStream fis = new FileInputStream(filePath);
+             Workbook workbook = new XSSFWorkbook(fis)) {
+
+            Sheet sheet = workbook.getSheetAt(0);
+            for (Row row : sheet) {
+                Cell cell = row.getCell(0); // Assuming primary key is in the first column
+                if (cell != null) {
+                    primaryKeys.add(cell.getStringCellValue());
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return primaryKeys;
+    }
+
+    private static List<Map<String, Object>> fetchRowsFromProdInBatches(CqlSession prodSession, List<String> primaryKeys) {
+        String inClause = primaryKeys.stream()
+                .map(key -> "?")
+                .collect(Collectors.joining(", "));
+        String selectQuery = String.format("SELECT * FROM %s.%s WHERE primary_key_column IN (%s)", PROD_KEYSPACE, PROD_TABLE, inClause);
+
+        PreparedStatement selectStmt = prodSession.prepare(selectQuery);
+        BoundStatementBuilder boundStmtBuilder = selectStmt.boundStatementBuilder();
+
+        // Bind each primary key to the query
+        for (int i = 0; i < primaryKeys.size(); i++) {
+            boundStmtBuilder.setString(i, primaryKeys.get(i));
+        }
+
+        ResultSet resultSet = prodSession.execute(boundStmtBuilder.build());
+        List<Map<String, Object>> rowsData = new ArrayList<>();
+
+        for (Row row : resultSet) {
+            Map<String, Object> rowData = new HashMap<>();
+            for (ColumnDefinition column : row.getColumnDefinitions()) {
+                String columnName = column.getName().asInternal();
+                rowData.put(columnName, row.getObject(columnName));
+            }
+            rowsData.add(rowData);
+        }
+        return rowsData;
+    }
+
+    private static boolean recordExists(CqlSession nonProdSession, String primaryKey) {
+        String checkQuery = String.format("SELECT primary_key_column FROM %s.%s WHERE primary_key_column = ?", NON_PROD_KEYSPACE, NON_PROD_TABLE);
+        PreparedStatement checkStmt = nonProdSession.prepare(checkQuery);
+        BoundStatement boundStmt = checkStmt.bind(primaryKey);
+
+        ResultSet resultSet = nonProdSession.execute(boundStmt);
+        return resultSet.one() != null;
+    }
+
+    private static void insertRecord(CqlSession nonProdSession, Map<String, Object> rowData) {
+        StringBuilder queryBuilder = new StringBuilder("INSERT INTO ")
+                .append(NON_PROD_KEYSPACE)
+                .append(".")
+                .append(NON_PROD_TABLE)
+                .append(" (");
+        StringBuilder valuesBuilder = new StringBuilder("VALUES (");
+
+        rowData.forEach((colName, colValue) -> {
+            queryBuilder.append(colName).append(", ");
+            valuesBuilder.append("?, ");
+        });
+
+        queryBuilder.setLength(queryBuilder.length() - 2); // remove last ", "
+        valuesBuilder.setLength(valuesBuilder.length() - 2); // remove last ", "
+        queryBuilder.append(") ");
+        valuesBuilder.append(")");
+        queryBuilder.append(valuesBuilder);
+
+        PreparedStatement insertStmt = nonProdSession.prepare(queryBuilder.toString());
+        BoundStatementBuilder boundStmtBuilder = insertStmt.boundStatementBuilder();
+
+        int i = 0;
+        for (Map.Entry<String, Object> entry : rowData.entrySet()) {
+            if (entry.getValue() instanceof ByteBuffer) {
+                boundStmtBuilder.setByteBuffer(i, (ByteBuffer) entry.getValue());
+            } else {
+                boundStmtBuilder.set(i, entry.getValue(), Object.class);
+            }
+            i++;
+        }
+
+        nonProdSession.execute(boundStmtBuilder.build());
+        System.out.println("Record inserted with primary key: " + rowData.get("primary_key_column"));
+    }
+
+    private static void updateRecord(CqlSession nonProdSession, Map<String, Object> rowData) {
+        StringBuilder queryBuilder = new StringBuilder("UPDATE ")
+                .append(NON_PROD_KEYSPACE)
+                .append(".")
+                .append(NON_PROD_TABLE)
+                .append(" SET ");
+
+        String primaryKeyValue = (String) rowData.get("primary_key_column");
+        rowData.remove("primary_key_column");
+
+        rowData.forEach((colName, colValue) -> {
+            queryBuilder.append(colName).append(" = ?, ");
+        });
+
+        queryBuilder.setLength(queryBuilder.length() - 2); // remove last ", "
+        queryBuilder.append(" WHERE primary_key_column = ?");
+
+        PreparedStatement updateStmt = nonProdSession.prepare(queryBuilder.toString());
+        BoundStatementBuilder boundStmtBuilder = updateStmt.boundStatementBuilder();
+
+        int i = 0;
+        for (Map.Entry<String, Object> entry : rowData.entrySet()) {
+            if (entry.getValue() instanceof ByteBuffer) {
+                boundStmtBuilder.setByteBuffer(i, (ByteBuffer) entry.getValue());
+            } else {
+                boundStmtBuilder.set(i, entry.getValue(), Object.class);
+            }
+            i++;
+        }
+        boundStmtBuilder.setString(i, primaryKeyValue);
+
+        nonProdSession.execute(boundStmtBuilder.build());
+        System.out.println("Record updated with primary key: " + primaryKeyValue);
+    }
+}
