@@ -43,3 +43,33 @@ if (column.getType().asCql(true).equals("blob")) {
         } else {
             values.append("'").append(row.getObject(columnName)).append("', ");
         }
+
+
+private static String generateUpdateQuery(String keyspace, String table, Row row, String primaryKeyColumn) {
+    StringBuilder setClause = new StringBuilder();
+
+    for (ColumnMetadata column : row.getColumnDefinitions()) {
+        String columnName = column.getName().asInternal();
+        if (!columnName.equals(primaryKeyColumn)) {
+            if (column.getType().getName().equals("blob")) {
+                // Handle BLOB: Convert ByteBuffer to hex string
+                ByteBuffer blobValue = row.getByteBuffer(columnName);
+                if (blobValue != null) {
+                    setClause.append(columnName).append(" = 0x").append(bytesToHex(blobValue.array())).append(", ");
+                } else {
+                    setClause.append(columnName).append(" = null, ");
+                }
+            } else {
+                setClause.append(columnName).append(" = '").append(row.getObject(columnName)).append("', ");
+            }
+        }
+    }
+
+    // Remove the trailing commas and spaces
+    if (setClause.length() > 0) {
+        setClause.setLength(setClause.length() - 2);
+    }
+
+    Object primaryKeyValue = row.getObject(primaryKeyColumn);
+    return String.format("UPDATE %s.%s SET %s WHERE %s = '%s'", keyspace, table, setClause, primaryKeyColumn, primaryKeyValue);
+}
