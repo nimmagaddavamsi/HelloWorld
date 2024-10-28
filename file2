@@ -1,7 +1,6 @@
 import com.datastax.oss.driver.api.core.CqlSession;
-import com.datastax.oss.driver.api.core.cql.BatchStatement;
-import com.datastax.oss.driver.api.core.cql.SimpleStatement;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.cql.*;
+import com.datastax.oss.driver.api.core.metadata.schema.TableMetadata;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -12,9 +11,14 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
-public class CassandraBatchSelectWithExcelInput {
+public class CassandraDataTransferWithDynamicColumns {
+
     private static final int BATCH_SIZE = 100;
+    private static final String SOURCE_KEYSPACE = "source_keyspace";
+    private static final String DESTINATION_KEYSPACE = "destination_keyspace";
+    private static final String TABLE_NAME = "orders";
 
     public static void main(String[] args) {
         String excelFilePath = "path/to/your/input.xlsx"; // Path to the Excel file
@@ -22,39 +26,106 @@ public class CassandraBatchSelectWithExcelInput {
         // Step 1: Read data from Excel file
         List<String> customerOrderPairs = readCustomerOrderPairsFromExcel(excelFilePath);
 
-        // Step 2: Connect to Cassandra and execute batch queries in batches of 100
-        try (CqlSession session = CqlSession.builder()
+        // Step 2: Connect to source and destination Cassandra clusters
+        try (CqlSession sourceSession = CqlSession.builder()
                 .addContactPoint(new InetSocketAddress("127.0.0.1", 9042))
                 .withLocalDatacenter("datacenter1")
-                .build()) {
+                .build();
+             CqlSession destinationSession = CqlSession.builder()
+                     .addContactPoint(new InetSocketAddress("192.168.1.10", 9042))
+                     .withLocalDatacenter("datacenter2")
+                     .build()) {
+
+            // Fetch column definitions from the source table
+            TableMetadata tableMetadata = sourceSession.getMetadata()
+                    .getKeyspace(SOURCE_KEYSPACE)
+                    .flatMap(ks -> ks.getTable(TABLE_NAME))
+                    .orElseThrow(() -> new IllegalArgumentException("Table not found in source keyspace"));
 
             for (int i = 0; i < customerOrderPairs.size(); i += BATCH_SIZE) {
-                // Create a batch statement for the current batch
                 BatchStatement batch = BatchStatement.newInstance(BatchStatement.Type.UNLOGGED);
 
-                // Add up to 100 statements to the batch
                 for (int j = i; j < i + BATCH_SIZE && j < customerOrderPairs.size(); j++) {
                     String pair = customerOrderPairs.get(j);
                     String[] parts = pair.split(", ");
                     String customerId = parts[0];
                     String orderId = parts[1];
 
+                    // Fetch data from the source cluster
                     SimpleStatement selectStatement = SimpleStatement.newInstance(
-                            "SELECT * FROM orders WHERE customer_id = ? AND order_id = ?",
+                            "SELECT * FROM " + SOURCE_KEYSPACE + "." + TABLE_NAME + " WHERE customer_id = ? AND order_id = ?",
                             Integer.parseInt(customerId), Integer.parseInt(orderId)
                     );
-                    batch = batch.add(selectStatement);
+                    ResultSet resultSet = sourceSession.execute(selectStatement);
+
+                    for (Row row : resultSet) {
+                        // Check if the row exists in the destination cluster
+                        SimpleStatement checkStatement = SimpleStatement.newInstance(
+                                "SELECT customer_id, order_id FROM " + DESTINATION_KEYSPACE + "." + TABLE_NAME + " WHERE customer_id = ? AND order_id = ?",
+                                row.getInt("customer_id"), row.getInt("order_id")
+                        );
+                        Row existingRow = destinationSession.execute(checkStatement).one();
+
+                        if (existingRow != null) {
+                            // Update existing row in the destination cluster
+                            SimpleStatement updateStatement = generateUpdateStatement(row, tableMetadata);
+                            batch = batch.add(updateStatement);
+                        } else {
+                            // Insert new row in the destination cluster
+                            SimpleStatement insertStatement = generateInsertStatement(row, tableMetadata);
+                            batch = batch.add(insertStatement);
+                        }
+                    }
                 }
 
-                // Execute the batch and retrieve results
-                ResultSet resultSet = session.execute(batch);
-                resultSet.forEach(row -> {
-                    System.out.println("Row: " + row);
-                });
+                // Execute the batch in the destination cluster
+                destinationSession.execute(batch);
+                System.out.println("Batch of " + Math.min(BATCH_SIZE, customerOrderPairs.size() - i) + " records processed.");
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    // Method to generate an insert statement dynamically based on the row and table metadata
+    private static SimpleStatement generateInsertStatement(Row row, TableMetadata tableMetadata) {
+        List<String> columns = new ArrayList<>();
+        List<Object> values = new ArrayList<>();
+
+        tableMetadata.getColumns().forEach((name, column) -> {
+            columns.add(name.asInternal());
+            values.add(row.getObject(name.asInternal()));
+        });
+
+        String columnNames = String.join(", ", columns);
+        String placeholders = columns.stream().map(c -> "?").collect(Collectors.joining(", "));
+
+        return SimpleStatement.newInstance(
+                String.format("INSERT INTO %s.%s (%s) VALUES (%s)", DESTINATION_KEYSPACE, TABLE_NAME, columnNames, placeholders),
+                values.toArray()
+        );
+    }
+
+    // Method to generate an update statement dynamically based on the row and table metadata
+    private static SimpleStatement generateUpdateStatement(Row row, TableMetadata tableMetadata) {
+        List<String> setClauses = new ArrayList<>();
+        List<Object> values = new ArrayList<>();
+
+        tableMetadata.getColumns().forEach((name, column) -> {
+            if (!name.asInternal().equals("customer_id") && !name.asInternal().equals("order_id")) { // Assuming these are primary keys
+                setClauses.add(name.asInternal() + " = ?");
+                values.add(row.getObject(name.asInternal()));
+            }
+        });
+
+        values.add(row.getObject("customer_id")); // Primary key value
+        values.add(row.getObject("order_id"));    // Primary key value
+
+        String setClause = String.join(", ", setClauses);
+        return SimpleStatement.newInstance(
+                String.format("UPDATE %s.%s SET %s WHERE customer_id = ? AND order_id = ?", DESTINATION_KEYSPACE, TABLE_NAME, setClause),
+                values.toArray()
+        );
     }
 
     // Method to read customer_id and order_id pairs from an Excel file
