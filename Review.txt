@@ -1,0 +1,38 @@
+Here’s a self-review based on your contributions to the data copy project:
+
+---
+
+### Quarterly Self-Review
+
+#### Project: Data Copy from Production to Non-Production
+
+**Objective**: Design and implement a data copy process to move data from production to non-production environments, ensuring efficiency and consistency across Cassandra and PostgreSQL databases.
+
+---
+
+**Key Contributions:**
+
+1. **Efficient Requirements Gathering**:
+   - I streamlined the requirements gathering by organizing a single, focused meeting to clarify project needs. This approach minimized time spent on upfront planning, allowing me to move quickly into development.
+
+2. **Proof of Concept (POC) to Validate Approach**:
+   - I created a POC to test and validate the data copy process before executing a full migration. This step was crucial in identifying potential issues early and saved time by avoiding a large-scale data transfer until the process was fully refined.
+   - The successful POC confirmed that our approach would effectively handle foreign key dependencies and compatibility between Cassandra and PostgreSQL, giving me the confidence to proceed with full-scale migration.
+
+3. **Script Development for Full Data Copy**:
+   - After validating the POC, I developed and optimized scripts to perform the full data copy across multiple databases and tables. The scripts ensured data accuracy and consistency across environments and were designed to handle the unique structures of both Cassandra and PostgreSQL.
+   - These scripts now allow for efficient and repeatable data transfers, keeping non-production environments up to date without manual intervention.
+
+---
+
+**Impact**:
+   - My POC-first approach minimized project risk and ensured a smooth, efficient migration process.
+   - The scripts I developed have made data updates across environments faster and more reliable, significantly enhancing the accuracy and usability of our non-production setups for testing.
+
+**Reflection and Next Steps**:
+   - I was able to deliver a reliable solution while managing my time effectively. I plan to monitor script performance and seek additional optimizations to further streamline the process.
+   - Moving forward, I intend to document lessons learned and best practices from this project to support future data migration initiatives.
+
+---
+
+By focusing on a POC-first strategy and efficient scripting, I was able to deliver a robust solution with minimal resource investment, helping the team maintain high-quality non-production environments for ongoing development and testing needs.
