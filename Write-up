@@ -1,75 +1,177 @@
 import java.sql.*;
+import java.util.*;
 
 public class Db2DynamicColumnTransfer {
     // Source DB2 (Non-Prod) connection details
-    private static final String SOURCE_DB_URL = "jdbc:odbc:SourceDSN";
+    private static final String SOURCE_DB_URL = "jdbc:db2://<source-host>:<port>/<db-name>";
     private static final String SOURCE_DB_USER = "sourceUsername";
     private static final String SOURCE_DB_PASSWORD = "sourcePassword";
 
     // Destination DB2 (Non-Prod) connection details
-    private static final String DEST_DB_URL = "jdbc:odbc:DestinationDSN";
+    private static final String DEST_DB_URL = "jdbc:db2://<dest-host>:<port>/<db-name>";
     private static final String DEST_DB_USER = "destUsername";
     private static final String DEST_DB_PASSWORD = "destPassword";
 
     public static void main(String[] args) {
         Connection sourceConnection = null;
         Connection destConnection = null;
-        PreparedStatement selectStatement = null;
+        PreparedStatement selectSourceStatement = null;
+        PreparedStatement selectDestStatement = null;
+        PreparedStatement deleteStatement = null;
         PreparedStatement insertStatement = null;
-        ResultSet resultSet = null;
+        ResultSet sourceResultSet = null;
+        ResultSet destResultSet = null;
+
+        // List of values for WHERE condition
+        List<String> whereValues = Arrays.asList("value1", "value2", "value3");
+
+        // Additional tables to delete from
+        List<String> additionalTables = Arrays.asList("table1", "table2", "table3", "table4", "table5");
 
         try {
-            // Connect to the source Db2 database
+            // Connect to the source and destination databases
             sourceConnection = DriverManager.getConnection(SOURCE_DB_URL, SOURCE_DB_USER, SOURCE_DB_PASSWORD);
-            System.out.println("Connected to the source database successfully!");
-
-            // Connect to the destination Db2 database
             destConnection = DriverManager.getConnection(DEST_DB_URL, DEST_DB_USER, DEST_DB_PASSWORD);
-            System.out.println("Connected to the destination database successfully!");
+            System.out.println("Connected to both databases successfully!");
 
-            // SELECT query with WHERE condition on the source database
-            String selectQuery = "SELECT * FROM source_table WHERE column3 = ?";
-            selectStatement = sourceConnection.prepareStatement(selectQuery);
-            selectStatement.setString(1, "specificCondition"); // Set the condition dynamically
-            resultSet = selectStatement.executeQuery();
-
-            // Get metadata from ResultSet
-            ResultSetMetaData metaData = resultSet.getMetaData();
-            int columnCount = metaData.getColumnCount();
-
-            // Dynamically construct the INSERT query based on column metadata
-            StringBuilder insertQueryBuilder = new StringBuilder("INSERT INTO destination_table (");
-            StringBuilder valuesBuilder = new StringBuilder(" VALUES (");
-
-            for (int i = 1; i <= columnCount; i++) {
-                insertQueryBuilder.append(metaData.getColumnName(i));
-                valuesBuilder.append("?");
-                if (i < columnCount) {
-                    insertQueryBuilder.append(", ");
-                    valuesBuilder.append(", ");
+            // Fetch data from source for the given values
+            StringBuilder selectSourceQueryBuilder = new StringBuilder("SELECT * FROM source_table WHERE column3 IN (");
+            for (int i = 0; i < whereValues.size(); i++) {
+                selectSourceQueryBuilder.append("?");
+                if (i < whereValues.size() - 1) {
+                    selectSourceQueryBuilder.append(", ");
                 }
             }
-            insertQueryBuilder.append(")").append(valuesBuilder).append(")");
+            selectSourceQueryBuilder.append(")");
+            String selectSourceQuery = selectSourceQueryBuilder.toString();
 
-            String insertQuery = insertQueryBuilder.toString();
-            insertStatement = destConnection.prepareStatement(insertQuery);
-
-            // Process the results and insert into destination table
-            while (resultSet.next()) {
-                for (int i = 1; i <= columnCount; i++) {
-                    insertStatement.setObject(i, resultSet.getObject(i));
-                }
-                insertStatement.executeUpdate();
-                System.out.println("Inserted a row into the destination table.");
+            selectSourceStatement = sourceConnection.prepareStatement(selectSourceQuery);
+            for (int i = 0; i < whereValues.size(); i++) {
+                selectSourceStatement.setString(i + 1, whereValues.get(i));
             }
+            sourceResultSet = selectSourceStatement.executeQuery();
+
+            // Store rows fetched from the source
+            List<Map<String, Object>> sourceRows = new ArrayList<>();
+            ResultSetMetaData sourceMetaData = sourceResultSet.getMetaData();
+            int sourceColumnCount = sourceMetaData.getColumnCount();
+
+            while (sourceResultSet.next()) {
+                Map<String, Object> row = new HashMap<>();
+                for (int i = 1; i <= sourceColumnCount; i++) {
+                    row.put(sourceMetaData.getColumnName(i), sourceResultSet.getObject(i));
+                }
+                sourceRows.add(row);
+            }
+            System.out.println("Fetched data from source: " + sourceRows.size() + " rows");
+
+            // Check existing values in destination table
+            StringBuilder selectDestQueryBuilder = new StringBuilder("SELECT column3 FROM destination_table WHERE column3 IN (");
+            for (int i = 0; i < whereValues.size(); i++) {
+                selectDestQueryBuilder.append("?");
+                if (i < whereValues.size() - 1) {
+                    selectDestQueryBuilder.append(", ");
+                }
+            }
+            selectDestQueryBuilder.append(")");
+            String selectDestQuery = selectDestQueryBuilder.toString();
+
+            selectDestStatement = destConnection.prepareStatement(selectDestQuery);
+            for (int i = 0; i < whereValues.size(); i++) {
+                selectDestStatement.setString(i + 1, whereValues.get(i));
+            }
+            destResultSet = selectDestStatement.executeQuery();
+
+            Set<String> existingValues = new HashSet<>();
+            while (destResultSet.next()) {
+                existingValues.add(destResultSet.getString("column3"));
+            }
+
+            // Delete rows from additional tables and destination table if values exist
+            if (!existingValues.isEmpty()) {
+                for (String tableName : additionalTables) {
+                    StringBuilder deleteQueryBuilder = new StringBuilder("DELETE FROM ").append(tableName).append(" WHERE column3 IN (");
+                    for (int i = 0; i < existingValues.size(); i++) {
+                        deleteQueryBuilder.append("?");
+                        if (i < existingValues.size() - 1) {
+                            deleteQueryBuilder.append(", ");
+                        }
+                    }
+                    deleteQueryBuilder.append(")");
+                    String deleteQuery = deleteQueryBuilder.toString();
+
+                    deleteStatement = destConnection.prepareStatement(deleteQuery);
+                    int index = 1;
+                    for (String value : existingValues) {
+                        deleteStatement.setString(index++, value);
+                    }
+
+                    int deletedRows = deleteStatement.executeUpdate();
+                    System.out.println("Deleted " + deletedRows + " rows from " + tableName);
+                }
+
+                // Delete from destination table
+                StringBuilder mainDeleteQueryBuilder = new StringBuilder("DELETE FROM destination_table WHERE column3 IN (");
+                for (int i = 0; i < existingValues.size(); i++) {
+                    mainDeleteQueryBuilder.append("?");
+                    if (i < existingValues.size() - 1) {
+                        mainDeleteQueryBuilder.append(", ");
+                    }
+                }
+                mainDeleteQueryBuilder.append(")");
+                String mainDeleteQuery = mainDeleteQueryBuilder.toString();
+
+                deleteStatement = destConnection.prepareStatement(mainDeleteQuery);
+                int index = 1;
+                for (String value : existingValues) {
+                    deleteStatement.setString(index++, value);
+                }
+
+                int deletedRows = deleteStatement.executeUpdate();
+                System.out.println("Deleted " + deletedRows + " rows from destination_table.");
+            }
+
+            // Dynamically insert rows into destination table
+            if (!sourceRows.isEmpty()) {
+                StringBuilder insertQueryBuilder = new StringBuilder("INSERT INTO destination_table (");
+                for (int i = 1; i <= sourceColumnCount; i++) {
+                    insertQueryBuilder.append(sourceMetaData.getColumnName(i));
+                    if (i < sourceColumnCount) {
+                        insertQueryBuilder.append(", ");
+                    }
+                }
+                insertQueryBuilder.append(") VALUES (");
+                for (int i = 1; i <= sourceColumnCount; i++) {
+                    insertQueryBuilder.append("?");
+                    if (i < sourceColumnCount) {
+                        insertQueryBuilder.append(", ");
+                    }
+                }
+                insertQueryBuilder.append(")");
+                String insertQuery = insertQueryBuilder.toString();
+
+                insertStatement = destConnection.prepareStatement(insertQuery);
+                for (Map<String, Object> row : sourceRows) {
+                    int paramIndex = 1;
+                    for (int i = 1; i <= sourceColumnCount; i++) {
+                        insertStatement.setObject(paramIndex++, row.get(sourceMetaData.getColumnName(i)));
+                    }
+                    insertStatement.executeUpdate();
+                }
+                System.out.println("Inserted " + sourceRows.size() + " rows into destination_table.");
+            }
+
         } catch (SQLException e) {
             System.out.println("Error occurred during database operation.");
             e.printStackTrace();
         } finally {
             // Close resources
             try {
-                if (resultSet != null) resultSet.close();
-                if (selectStatement != null) selectStatement.close();
+                if (sourceResultSet != null) sourceResultSet.close();
+                if (destResultSet != null) destResultSet.close();
+                if (selectSourceStatement != null) selectSourceStatement.close();
+                if (selectDestStatement != null) selectDestStatement.close();
+                if (deleteStatement != null) deleteStatement.close();
                 if (insertStatement != null) insertStatement.close();
                 if (sourceConnection != null) sourceConnection.close();
                 if (destConnection != null) destConnection.close();
