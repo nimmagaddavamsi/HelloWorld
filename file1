@@ -1,108 +1,60 @@
-import com.datastax.oss.driver.api.core.CqlSession;
-import com.datastax.oss.driver.api.core.cql.*;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
+import java.sql.SQLException;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-
-public class CassandraBatchUpsertWithExcelFilter {
-
+public class DB2LoadExample {
     public static void main(String[] args) {
-        String excelFilePath = "path/to/your/excel/file.xlsx"; // Replace with your Excel file path
-        List<String> filterValues = readFilterValuesFromExcel(excelFilePath);
+        // DB2 database connection details
+        String dbURL = "jdbc:db2://your-db2-host:50000/your-database-name";
+        String dbUsername = "your-username";
+        String dbPassword = "your-password";
 
-        try (CqlSession session = CqlSession.builder()
-                .addContactPoint(new InetSocketAddress("127.0.0.1", 9042)) // Replace with your Cassandra node's IP and port
-                .withKeyspace("your_keyspace") // Replace with your keyspace name
-                .withLocalDatacenter("datacenter1") // Replace with your local datacenter name
-                .build()) {
+        // Path to your CSV file
+        String filePath = "C:/path_to_your_file/employees.csv";
 
-            String tableName = "your_table";
-            int batchSize = 100;
+        // SQL statement to run the LOAD command
+        String loadSQL = "LOAD FROM '" + filePath + "' OF DEL "
+                         + "MODIFIED BY coldel(',') "
+                         + "NOCHECK CONSTRAINTS "
+                         + "INSERT INTO your_schema.employees";
 
-            for (int i = 0; i < filterValues.size(); i += batchSize) {
-                List<String> batchFilterValues = filterValues.subList(i, Math.min(i + batchSize, filterValues.size()));
-                String filterValueString = buildFilterValueString(batchFilterValues);
+        // JDBC connection and statement
+        Connection connection = null;
+        Statement statement = null;
 
-                // Fetch data in batches using token-based pagination
-                List<Row> rows = fetchRowsFromProdTable(session, tableName, filterValueString);
+        try {
+            // Load DB2 JDBC driver
+            Class.forName("com.ibm.db2.jcc.DB2Driver");
 
-                // Insert or update data in non-production table
-                upsertDataInNonProd(session, "your_non_prod_table", rows);
-            }
-        } catch (Exception e) {
+            // Establish a connection to the DB2 database
+            connection = DriverManager.getConnection(dbURL, dbUsername, dbPassword);
+
+            // Create a Statement object to execute the LOAD command
+            statement = connection.createStatement();
+
+            // Execute the LOAD command
+            int rowsLoaded = statement.executeUpdate(loadSQL);
+
+            // Output how many rows were loaded
+            System.out.println("Successfully loaded " + rowsLoaded + " rows.");
+
+        } catch (ClassNotFoundException e) {
+            System.err.println("DB2 JDBC Driver not found. Please ensure it's in the classpath.");
             e.printStackTrace();
-        }
-    }
-
-    private static List<String> readFilterValuesFromExcel(String filePath) {
-        List<String> filterValues = new ArrayList<>();
-        try (FileInputStream fis = new FileInputStream(filePath);
-             Workbook workbook = new XSSFWorkbook(fis)) {
-
-            Sheet sheet = workbook.getSheetAt(0); // Read the first sheet
-            Iterator<Row> rowIterator = sheet.iterator();
-
-            while (rowIterator.hasNext()) {
-                Row row = rowIterator.next();
-                String value = row.getCell(0).getStringCellValue(); // Assuming values are in the first column
-                filterValues.add(value);
-            }
-        } catch (IOException e) {
+        } catch (SQLException e) {
+            System.err.println("SQL error occurred while trying to execute the LOAD command.");
             e.printStackTrace();
-        }
-        return filterValues;
-    }
-
-    private static String buildFilterValueString(List<String> filterValues) {
-        StringBuilder filterValueString = new StringBuilder();
-        for (String value : filterValues) {
-            if (filterValueString.length() > 0) {
-                filterValueString.append(", ");
-            }
-            filterValueString.append("'").append(value).append("'");
-        }
-        return filterValueString.toString();
-    }
-
-    private static List<Row> fetchRowsFromProdTable(CqlSession session, String tableName, String filterValueString) {
-        String query = String.format("SELECT * FROM %s WHERE filter_column IN (%s)", tableName, filterValueString);
-        ResultSet resultSet = session.execute(query);
-
-        List<Row> rows = new ArrayList<>();
-        for (Row row : resultSet) {
-            rows.add(row);
-        }
-        return rows;
-    }
-
-    private static void upsertDataInNonProd(CqlSession session, String nonProdTableName, List<Row> rows) {
-        for (Row row : rows) {
-            String partitionKey = row.getString("partition_key_column"); // Replace with the correct partition key column
-            String filterValue = row.getString("filter_column"); // Replace with your filter column
-            String otherColumnValue = row.getString("other_column"); // Replace with other column data you need to insert
-
-            String insertQuery = String.format(
-                    "INSERT INTO %s (partition_key_column, filter_column, other_column) VALUES ('%s', '%s', '%s')",
-                    nonProdTableName, partitionKey, filterValue, otherColumnValue);
-
-            String updateQuery = String.format(
-                    "UPDATE %s SET other_column = '%s' WHERE partition_key_column = '%s' AND filter_column = '%s'",
-                    nonProdTableName, otherColumnValue, partitionKey, filterValue);
-
+        } finally {
             try {
-                ResultSet rs = session.execute(insertQuery + " IF NOT EXISTS");
-                if (!rs.wasApplied()) {
-                    session.execute(updateQuery);
+                // Close resources
+                if (statement != null) {
+                    statement.close();
                 }
-            } catch (Exception e) {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
                 e.printStackTrace();
             }
         }
